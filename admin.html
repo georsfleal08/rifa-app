@@ -1,0 +1,336 @@
+<!-- admin.html - Panel de Administración -->
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Panel de Administración - Rifa Premium</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f0f2f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            padding: 20px;
+        }
+        h1 {
+            color: #3a0ca3;
+            margin-bottom: 20px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        th, td {
+            padding: 12px 15px;
+            border: 1px solid #ddd;
+            text-align: left;
+        }
+        th {
+            background-color: #4361ee;
+            color: white;
+            position: sticky;
+            top: 0;
+        }
+        tr:nth-child(even) {
+            background-color: #f8f9fa;
+        }
+        tr:hover {
+            background-color: #e9ecef;
+        }
+        .verified {
+            background-color: #d4edda;
+        }
+        .pending {
+            background-color: #fff3cd;
+        }
+        button {
+            background-color: #4361ee;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button:hover {
+            background-color: #3a0ca3;
+        }
+        .btn-verify {
+            background-color: #28a745;
+        }
+        .btn-verify:hover {
+            background-color: #218838;
+        }
+        .btn-verified {
+            background-color: #6c757d;
+            cursor: default;
+        }
+        .search-container {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+        }
+        .search-container input {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .filters {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .filter-btn {
+            background: #e9ecef;
+            color: #495057;
+            border: 1px solid #dee2e6;
+        }
+        .filter-btn.active {
+            background: #4361ee;
+            color: white;
+            border-color: #4361ee;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .stats {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .stat-card {
+            flex: 1;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            padding: 15px;
+            text-align: center;
+        }
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #4361ee;
+        }
+        .stat-label {
+            color: #6c757d;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Panel de Administración - Rifa Premium</h1>
+            <button onclick="location.reload()">Actualizar</button>
+        </div>
+        
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-value" id="totalSales">0</div>
+                <div class="stat-label">VENTAS TOTALES</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="pendingCount">0</div>
+                <div class="stat-label">PENDIENTES</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="verifiedCount">0</div>
+                <div class="stat-label">VERIFICADOS</div>
+            </div>
+        </div>
+        
+        <div class="search-container">
+            <input type="text" id="searchInput" placeholder="Buscar por nombre, cédula o referencia..." onkeyup="searchTransactions()">
+            <button onclick="searchTransactions()">Buscar</button>
+        </div>
+        
+        <div class="filters">
+            <button class="filter-btn active" onclick="setFilter('all')">Todos</button>
+            <button class="filter-btn" onclick="setFilter('pending')">Pendientes</button>
+            <button class="filter-btn" onclick="setFilter('verified')">Verificados</button>
+        </div>
+        
+        <table id="transactionsTable">
+            <thead>
+                <tr>
+                    <th>Fecha</th>
+                    <th>Nombre</th>
+                    <th>CI</th>
+                    <th>Teléfono</th>
+                    <th>Email</th>
+                    <th>Boletos</th>
+                    <th>Referencia</th>
+                    <th>Estado</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Los datos se cargarán con JavaScript -->
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        // ==========================================
+        // CONFIGURACIÓN
+        // ==========================================
+        const MONGO_CONNECTION = "mongodb+srv://rifa_admin:<PasswordSeguro123!>@rifaapp.iixo6l8.mongodb.net/?retryWrites=true&w=majority&appName=RifaApp";
+        const MONGO_DB_NAME = "rifa";
+        const MONGO_COLLECTION = "transactions";
+        const TOTAL_TICKETS = 5000;
+        const PRICE_PER_TICKET = 699;
+        // ==========================================
+
+        let currentFilter = 'all';
+        let currentSearch = '';
+
+        async function loadTransactions() {
+            try {
+                let query = {};
+                
+                // Aplicar filtros
+                if (currentFilter === 'pending') {
+                    query.status = 'PENDIENTE';
+                } else if (currentFilter === 'verified') {
+                    query.status = 'VERIFICADO';
+                }
+                
+                // Aplicar búsqueda
+                if (currentSearch) {
+                    query.$or = [
+                        { name: { $regex: currentSearch, $options: 'i' } },
+                        { id: { $regex: currentSearch, $options: 'i' } },
+                        { reference: { $regex: currentSearch, $options: 'i' } }
+                    ];
+                }
+
+                const response = await fetch('https://api.vercel.com/v1/integrations/mongodb', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        connectionString: MONGO_CONNECTION,
+                        database: MONGO_DB_NAME,
+                        collection: MONGO_COLLECTION,
+                        action: "find",
+                        query: query,
+                        sort: { date: -1 }
+                    })
+                });
+
+                const transactions = await response.json();
+                renderTransactions(transactions);
+                updateStats(transactions);
+            } catch (error) {
+                console.error("Error cargando transacciones:", error);
+                alert("Error al cargar las transacciones");
+            }
+        }
+
+        function updateStats(transactions) {
+            const totalSales = transactions.reduce((sum, t) => sum + (t.tickets * PRICE_PER_TICKET), 0);
+            const pendingCount = transactions.filter(t => t.status === 'PENDIENTE').length;
+            const verifiedCount = transactions.filter(t => t.status === 'VERIFICADO').length;
+            
+            document.getElementById('totalSales').textContent = `Bs. ${totalSales.toLocaleString()}`;
+            document.getElementById('pendingCount').textContent = pendingCount;
+            document.getElementById('verifiedCount').textContent = verifiedCount;
+        }
+
+        function renderTransactions(transactions) {
+            const tbody = document.querySelector("#transactionsTable tbody");
+            tbody.innerHTML = "";
+
+            if (transactions.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;">No se encontraron transacciones</td></tr>`;
+                return;
+            }
+
+            transactions.forEach(transaction => {
+                const row = document.createElement("tr");
+                if (transaction.status === "VERIFICADO") {
+                    row.classList.add("verified");
+                } else {
+                    row.classList.add("pending");
+                }
+                
+                row.innerHTML = `
+                    <td>${new Date(transaction.date).toLocaleString()}</td>
+                    <td>${transaction.name}</td>
+                    <td>${transaction.id}</td>
+                    <td>${transaction.phone}</td>
+                    <td>${transaction.email}</td>
+                    <td>${transaction.tickets}</td>
+                    <td>${transaction.reference}</td>
+                    <td>${transaction.status}</td>
+                    <td>
+                        ${transaction.status !== "VERIFICADO" ? 
+                            `<button class="btn-verify" onclick="verifyPayment('${transaction._id}')">Verificar</button>` : 
+                            '<button class="btn-verified" disabled>Verificado</button>'}
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        async function verifyPayment(transactionId) {
+            if (confirm("¿Confirmas que el pago ha sido verificado y quieres generar los boletos?")) {
+                try {
+                    // Actualizar estado en la base de datos
+                    await fetch('https://api.vercel.com/v1/integrations/mongodb', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            connectionString: MONGO_CONNECTION,
+                            database: MONGO_DB_NAME,
+                            collection: MONGO_COLLECTION,
+                            action: "updateOne",
+                            filter: { _id: { $oid: transactionId } },
+                            update: { $set: { status: "VERIFICADO" } }
+                        })
+                    });
+
+                    // Recargar los datos
+                    loadTransactions();
+                    
+                    // Enviar email al usuario (simulado)
+                    alert("Pago verificado y boletos generados correctamente");
+                    
+                } catch (error) {
+                    console.error("Error verificando pago:", error);
+                    alert("Ocurrió un error al verificar el pago");
+                }
+            }
+        }
+
+        function setFilter(filter) {
+            currentFilter = filter;
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+            loadTransactions();
+        }
+
+        function searchTransactions() {
+            currentSearch = document.getElementById('searchInput').value;
+            loadTransactions();
+        }
+
+        // Cargar transacciones al iniciar
+        loadTransactions();
+        // Recargar cada 2 minutos
+        setInterval(loadTransactions, 120000);
+    </script>
+</body>
+</html>
