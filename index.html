@@ -6,7 +6,6 @@
     <title>Rifa Dream ON & Husky Dexa™</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        /* Estilos simplificados */
         * {
             box-sizing: border-box;
             margin: 0;
@@ -63,7 +62,7 @@
             background: #6c757d;
         }
         
-        input {
+        input, select {
             width: 100%;
             padding: 12px;
             margin: 8px 0 20px;
@@ -126,11 +125,13 @@
         <div id="step3" class="step-container">
             <h2 style="text-align:center; margin-bottom:20px;">Tus datos</h2>
             <label>Nombre completo</label>
-            <input type="text" id="fullName" placeholder="Ej: María Rodríguez">
+            <input type="text" id="fullName" placeholder="Ej: María Rodríguez" required>
             <label>Cédula de identidad</label>
-            <input type="text" id="idNumber" placeholder="Ej: V-12345678">
+            <input type="text" id="idNumber" placeholder="Ej: V-12345678" required>
             <label>Teléfono</label>
-            <input type="tel" id="phone" placeholder="Ej: 04141234567">
+            <input type="tel" id="phone" placeholder="Ej: 04141234567" required>
+            <label>Correo electrónico</label>
+            <input type="email" id="email" placeholder="Ej: usuario@ejemplo.com" required>
             <button id="continueToPayment" class="btn">Continuar</button>
             <button id="prevBtn3" class="btn btn-secondary">Atrás</button>
         </div>
@@ -164,7 +165,7 @@
 
             <div style="margin:20px 0;">
                 <label>Número de referencia</label>
-                <input type="text" id="referenceNumber" placeholder="Ej: 1234567890">
+                <input type="text" id="referenceNumber" placeholder="Ej: 1234567890" required>
             </div>
 
             <button id="continueToReport" class="btn">Reportar pago</button>
@@ -175,34 +176,23 @@
         <div id="step5" class="step-container">
             <div style="text-align:center; padding:20px;">
                 <i class="fas fa-check-circle" style="font-size:60px; color:#4cc9f0; margin-bottom:20px;"></i>
-                <h2>¡Pago Recibido!</h2>
-                <p style="margin:20px 0;">Tus boletos están siendo generados. Por favor espera...</p>
-                <div id="reportTimer" style="font-size:24px; font-weight:bold; margin:20px 0;">30</div>
-                <button id="continueToReview" class="btn">Continuar</button>
-                <button id="prevBtn5" class="btn btn-secondary">Atrás</button>
-            </div>
-        </div>
-
-        <!-- Paso 6: Boletos -->
-        <div id="step6" class="step-container">
-            <div style="text-align:center; padding:20px;">
-                <i class="fas fa-ticket-alt" style="font-size:60px; color:#4cc9f0; margin-bottom:20px;"></i>
-                <h2>¡Felicidades!</h2>
-                <p style="margin:20px 0;">Tu número de boletos es:</p>
-                <div style="font-size:24px; font-weight:bold; margin:20px 0;" id="ticketNumbers">RIFA-2023-12345</div>
-                <p>Te hemos enviado los detalles a tu teléfono</p>
-                <button id="finishBtn" class="btn">Finalizar</button>
+                <h2>¡Pago Reportado!</h2>
+                <p style="margin:20px 0;">Hemos recibido tu reporte de pago. Estaremos verificando y en cuanto sea confirmado, te enviaremos tus boletos al correo electrónico.</p>
+                <p>Tu número de referencia es: <strong id="reportReference"></strong></p>
+                <button id="returnHome" class="btn">Volver al inicio</button>
             </div>
         </div>
     </div>
 
     <script>
         // ==========================================
-        // CONFIGURACIÓN FÁCIL - EDITA ESTA PARTE
+        // CONFIGURACIÓN DEL SISTEMA
         // ==========================================
-        const MONGO_CONNECTION = "mongodb+srv://rifa_admin:<PasswordSeguro123!>@rifaapp.iixo6l8.mongodb.net/?retryWrites=true&w=majority&appName=RifaApp"; // Pega aquí el link que copiaste de MongoDB
+        const ADMIN_WHATSAPP = "584127430912"; // Tu número de WhatsApp
+        const MONGO_CONNECTION = "mongodb+srv://rifa_admin:<PasswordSeguro123!>@rifaapp.iixo6l8.mongodb.net/?retryWrites=true&w=majority&appName=RifaApp";
         const MONGO_DB_NAME = "rifa";
         const MONGO_COLLECTION = "transactions";
+        const ADMIN_PANEL_URL = "https://rifa-app-eta.vercel.app/admin.html";
         const TOTAL_TICKETS = 5000;
         const PRICE_PER_TICKET = 699;
         // ==========================================
@@ -234,9 +224,11 @@
                 name: document.getElementById('fullName').value,
                 id: document.getElementById('idNumber').value,
                 phone: document.getElementById('phone').value,
+                email: document.getElementById('email').value,
                 tickets: ticketQuantity,
                 reference: document.getElementById('referenceNumber').value,
-                date: new Date().toISOString()
+                date: new Date().toISOString(),
+                status: "PENDIENTE" // Estado inicial
             };
 
             try {
@@ -253,42 +245,75 @@
                     })
                 });
 
-                return await response.json();
+                const result = await response.json();
+                return { success: true, id: result.insertedId };
             } catch (error) {
                 console.error("Error guardando datos:", error);
                 return { success: false };
             }
         }
 
-        // Generar número de boleto
-        function generateTicketNumber() {
-            const randomNum = Math.floor(10000 + Math.random() * 90000);
-            return `RIFA-${new Date().getFullYear()}-${randomNum}`;
+        // Enviar notificación por WhatsApp al administrador
+        function sendWhatsAppNotification(data) {
+            const message = `NUEVO PAGO REPORTADO!%0A%0A` +
+                           `Nombre: ${data.name}%0A` +
+                           `CI: ${data.id}%0A` +
+                           `Teléfono: ${data.phone}%0A` +
+                           `Email: ${data.email}%0A` +
+                           `Boletos: ${data.tickets}%0A` +
+                           `Referencia: ${data.reference}%0A` +
+                           `Monto: ${data.tickets * PRICE_PER_TICKET} Bs.%0A%0A` +
+                           `Verificar en: ${ADMIN_PANEL_URL}`;
+            
+            // Crear enlace para abrir WhatsApp
+            const whatsappUrl = `https://wa.me/${ADMIN_WHATSAPP}?text=${message}`;
+            
+            // Abrir en una nueva pestaña
+            window.open(whatsappUrl, '_blank');
         }
 
         // Event Listeners
         document.getElementById('startBtn').addEventListener('click', () => goToStep(2));
         document.getElementById('continueToInfo').addEventListener('click', () => goToStep(3));
         document.getElementById('continueToPayment').addEventListener('click', () => goToStep(4));
-        document.getElementById('continueToReport').addEventListener('click', () => goToStep(5));
         
-        document.getElementById('continueToReview').addEventListener('click', async () => {
+        document.getElementById('continueToReport').addEventListener('click', async () => {
+            // Validar campos requeridos
+            if (!document.getElementById('referenceNumber').value) {
+                alert("Por favor ingresa el número de referencia");
+                return;
+            }
+
             // Guardar datos
             const result = await saveData();
             if (result.success) {
-                // Generar número de boleto
-                const ticketNumber = generateTicketNumber();
-                document.getElementById('ticketNumbers').textContent = ticketNumber;
-                goToStep(6);
+                // Obtener datos para la notificación
+                const transactionData = {
+                    name: document.getElementById('fullName').value,
+                    id: document.getElementById('idNumber').value,
+                    phone: document.getElementById('phone').value,
+                    email: document.getElementById('email').value,
+                    tickets: ticketQuantity,
+                    reference: document.getElementById('referenceNumber').value
+                };
+                
+                // Enviar notificación por WhatsApp
+                sendWhatsAppNotification(transactionData);
+                
+                // Mostrar número de referencia en el paso 5
+                document.getElementById('reportReference').textContent = transactionData.reference;
+                
+                // Ir al paso 5
+                goToStep(5);
+            } else {
+                alert("Ocurrió un error al guardar tus datos. Por favor, inténtalo de nuevo.");
             }
         });
 
-        document.getElementById('finishBtn').addEventListener('click', () => goToStep(1));
-
+        document.getElementById('returnHome').addEventListener('click', () => goToStep(1));
         document.getElementById('prevBtn2').addEventListener('click', () => goToStep(1));
         document.getElementById('prevBtn3').addEventListener('click', () => goToStep(2));
         document.getElementById('prevBtn4').addEventListener('click', () => goToStep(3));
-        document.getElementById('prevBtn5').addEventListener('click', () => goToStep(4));
 
         document.getElementById('increaseBtn').addEventListener('click', () => {
             if (ticketQuantity < 10) {
@@ -325,7 +350,7 @@
         // Inicialización
         function init() {
             // Datos iniciales
-            soldTickets = 1250; // Este número vendría de la base de datos
+            soldTickets = 1250;
             document.getElementById('soldTickets').textContent = soldTickets;
             document.getElementById('availableTickets').textContent = TOTAL_TICKETS - soldTickets;
             updateProgress();
